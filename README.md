@@ -34,7 +34,7 @@ Before you begin, ensure you have the following installed:
 
 3. **Clone the Katna repository (optional):**
    ```bash
-   git clone https://github.com/keplerlab/Katna.git
+   git clone https://github.com/svjack/Katna.git
    ```
 
 ## Usage
