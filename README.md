@@ -6,6 +6,184 @@
 ### Resources 
 * Homepage and Reference: <https://katna.readthedocs.io/>
 
+# Video Segmentation by Keyframe Similarity
+
+This README provides a guide on how to segment a video into smaller clips based on the similarity of keyframes extracted from the video. The process involves extracting keyframes, calculating similarity between frames, and splitting the video accordingly.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- Python 3.9 (or later)
+- FFmpeg
+- Git
+- Git LFS
+
+## Installation
+
+1. **Activate the Python environment:**
+   ```bash
+   conda activate py39
+   ```
+
+2. **Install necessary packages:**
+   ```bash
+   sudo apt-get update && sudo apt-get install ffmpeg cbm git-lfs
+   pip install katna moviepy opencv-python
+   ```
+
+3. **Clone the Katna repository (optional):**
+   ```bash
+   git clone https://github.com/keplerlab/Katna.git
+   ```
+
+## Usage
+
+### 1. Download a Sample Video
+
+Download a sample video from a source like Bilibili using a tool like `BBDown`:
+
+```bash
+.\BBDown.exe https://www.bilibili.com/video/BV14UD6YFEh1
+mv '.\【原神·尘歌壶】翠黛峰一体化_扫冬峰 峰上人间 _ 摹本分享.mp4' cgh_hb.mp4
+```
+
+### 2. Extract Keyframes and Segment the Video
+
+Use the provided Python script to extract keyframes and segment the video based on similarity:
+
+```python
+from Katna.video import Video
+from Katna.writer import KeyFrameDiskWriter
+import os
+import cv2
+import numpy as np
+from moviepy.editor import VideoFileClip
+import hashlib
+import shutil
+
+def extract_video_keyframes(video_file_path, no_of_frames=12):
+    """
+    Extract keyframes from a video file and save them to a temporary folder.
+
+    :param video_file_path: Path to the video file
+    :param no_of_frames: Number of keyframes to extract, default is 12
+    :return: Path to the temporary folder containing keyframes
+    """
+    temp_folder = f"temp_keyframes_{hashlib.md5(video_file_path.encode()).hexdigest()}"
+    os.makedirs(temp_folder, exist_ok=True)
+
+    vd = Video()
+    diskwriter = KeyFrameDiskWriter(location=temp_folder)
+
+    vd.extract_video_keyframes(
+        no_of_frames=no_of_frames,
+        file_path=video_file_path,
+        writer=diskwriter
+    )
+
+    return temp_folder
+
+def calculate_similarity(image1, image2):
+    """
+    Calculate the similarity between two images.
+
+    :param image1: First image
+    :param image2: Second image
+    :return: Similarity value
+    """
+    gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+
+    hist1 = cv2.calcHist([gray1], [0], None, [256], [0, 256])
+    hist2 = cv2.calcHist([gray2], [0], None, [256], [0, 256])
+
+    cv2.normalize(hist1, hist1, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(hist2, hist2, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+
+    similarity = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
+    return similarity
+
+def split_video_by_similarity(video_file_path, similarity_threshold=0.8, no_of_frames=12):
+    """
+    Split the video into smaller clips based on image similarity and save them to a specified path.
+
+    :param video_file_path: Path to the original video file
+    :param similarity_threshold: Similarity threshold, default is 0.8
+    :param no_of_frames: Number of keyframes to extract, default is 12
+    """
+    video_name = os.path.basename(video_file_path).split('.')[0]
+    output_folder = f"{video_name}_segments"
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    keyframe_folder = extract_video_keyframes(video_file_path, no_of_frames)
+
+    keyframe_files = [f for f in os.listdir(keyframe_folder) if f.endswith('.jpeg')]
+    keyframe_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
+
+    keyframes = []
+    for keyframe_file in keyframe_files:
+        keyframe_path = os.path.join(keyframe_folder, keyframe_file)
+        keyframe = cv2.imread(keyframe_path)
+        keyframes.append(keyframe)
+
+    video_clip = VideoFileClip(video_file_path)
+    fps = video_clip.fps
+
+    segments = []
+    start_time = 0
+    current_time = 0
+    current_frame = 0
+
+    for frame in video_clip.iter_frames():
+        similarity = calculate_similarity(frame, keyframes[current_frame])
+
+        if similarity > similarity_threshold:
+            end_time = current_time
+            segments.append((start_time, end_time))
+            start_time = current_time
+            current_frame += 1
+            if current_frame >= len(keyframes):
+                break
+
+        current_time += 1 / fps
+
+    segments.append((start_time, current_time))
+    segments = list(filter(lambda x: x[1] - x[0] > 0, segments))
+
+    for i, (start_time, end_time) in enumerate(segments):
+        subclip = video_clip.subclip(start_time, end_time)
+        output_file = os.path.join(output_folder, f'{video_name}_segment_{i}.mp4')
+        subclip.write_videofile(output_file, codec='libx264')
+
+    shutil.rmtree(keyframe_folder)
+
+# Example call
+video_file_path = "cgh_hb.mp4"
+split_video_by_similarity(video_file_path, no_of_frames=24)
+```
+
+### 3. Run the Script
+
+Save the script to a file, for example, `video_segmentation.py`, and run it:
+
+```bash
+python video_segmentation.py
+```
+
+This will segment the video `cgh_hb.mp4` into smaller clips based on the similarity of keyframes and save them in the `cgh_hb_segments` folder.
+
+## References
+
+- [Katna GitHub Repository](https://github.com/keplerlab/Katna)
+- [Katna Documentation](https://katna.readthedocs.io/en/latest/tutorials_video.html)
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
 ### Description
 
 Katna automates the boring, error prone task of videos key/best frames extraction,
