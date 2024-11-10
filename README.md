@@ -388,6 +388,94 @@ for mp4_path in tqdm(mp4_l):
     display.clear_output(wait = True)
 ```
 
+### 6. mp4 to image frames 
+```python
+import pathlib
+import pandas as pd
+import numpy as np
+
+video_path_df = pd.DataFrame(
+pd.Series(list(pathlib.Path(".").rglob("BV*_interval_videos"))).map(str).map(
+    lambda vp: pd.Series(list(pathlib.Path(vp).rglob("*.mp4"))).map(str).values.tolist()
+).explode().dropna().map(
+    lambda x: (x, x.replace("\\", "_").replace(".mp4", ""))
+).values.tolist())
+video_path_df.columns = ["mp4_path", "frame_path"]
+video_path_df
+
+
+import os
+from moviepy.editor import VideoFileClip
+from PIL import Image
+from tqdm import tqdm
+
+def extract_frames(video_path, output_folder, max_images_per_folder=1000, max_folder_count = 2):
+    # 确保输出文件夹存在
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    # 读取视频文件
+    clip = VideoFileClip(video_path)
+
+    # 获取视频的总帧数
+    total_frames = int(clip.fps * clip.duration)
+
+    # 初始化变量
+    frame_count = 0
+    folder_count = 0
+
+    # 创建第一个子文件夹
+    current_folder = os.path.join(output_folder, f"{output_folder}_folder_{folder_count}")
+    os.makedirs(current_folder, exist_ok=True)
+
+    # 遍历每一帧
+    for frame_idx, frame in tqdm(enumerate(clip.iter_frames())):
+        # 如果当前文件夹中的图片数量达到上限，创建新的文件夹
+        if frame_count >= max_images_per_folder:
+            if folder_count >= max_folder_count:
+                break
+            folder_count += 1
+            current_folder = os.path.join(output_folder, f"{output_folder}_folder_{folder_count}")
+            os.makedirs(current_folder, exist_ok=True)
+            frame_count = 0
+
+        # 保存当前帧为图片
+        frame_filename = os.path.join(current_folder, f"frame_{frame_count:06d}.png")
+        Image.fromarray(frame).save(frame_filename)
+
+        # 更新帧计数器
+        frame_count += 1
+
+    print(f"Extracted {total_frames} frames into {folder_count + 1} folders.")
+
+'''
+from IPython import display
+for i, r in tqdm(video_path_df.iterrows()):
+    mp4_path = r["mp4_path"]
+    frame_path = r["frame_path"]
+    extract_frames(mp4_path, frame_path, max_images_per_folder=200, max_folder_count = 2)
+    display.clear_output(wait=True)
+'''
+
+from tqdm import tqdm
+from IPython import display
+from concurrent.futures import ThreadPoolExecutor
+
+def process_video(row):
+    mp4_path = row["mp4_path"]
+    frame_path = row["frame_path"]
+    extract_frames(mp4_path, frame_path, max_images_per_folder=200, max_folder_count=2)
+    display.clear_output(wait=True)
+
+# 设置并行数
+parallel_count = 12  # 你可以根据需要调整这个值
+
+with ThreadPoolExecutor(max_workers=parallel_count) as executor:
+    list(tqdm(executor.map(process_video, 
+                           list(map(lambda t2: t2[1] ,video_path_df.iterrows()))
+                          ), total=len(video_path_df)))
+```
+
 ## References
 
 - [Katna GitHub Repository](https://github.com/keplerlab/Katna)
