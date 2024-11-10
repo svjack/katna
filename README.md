@@ -474,6 +474,20 @@ with ThreadPoolExecutor(max_workers=parallel_count) as executor:
     list(tqdm(executor.map(process_video, 
                            list(map(lambda t2: t2[1] ,video_path_df.iterrows()))
                           ), total=len(video_path_df)))
+
+from shutil import copytree
+import os
+import pandas as pd
+import pathlib
+import numpy as np
+os.makedirs("genshin_frame_V2", exist_ok=True)
+f_list = pd.Series(list(pathlib.Path(".").rglob("*/*_interval_videos_interval_*_folder_*"))).map(str).dropna().values.tolist()
+f_list, len(f_list)
+
+from tqdm import tqdm
+f_list = pd.Series(list(pathlib.Path(".").rglob("*/*_interval_videos_interval_*_folder_*"))).map(str).dropna().values.tolist()
+for p in tqdm(f_list):
+    copytree(p, os.path.join("genshin_frame_V2", p.split("\\")[-1]))
 ```
 
 ## References
