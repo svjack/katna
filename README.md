@@ -488,6 +488,33 @@ from tqdm import tqdm
 f_list = pd.Series(list(pathlib.Path(".").rglob("*/*_interval_videos_interval_*_folder_*"))).map(str).dropna().values.tolist()
 for p in tqdm(f_list):
     copytree(p, os.path.join("genshin_frame_V2", p.split("\\")[-1]))
+
+import os
+import shutil
+from tqdm import tqdm
+
+def copy_folders_with_many_files(source_path, dest_path, file_count_threshold=30):
+    # 确保目标路径存在，如果不存在则创建
+    if not os.path.exists(dest_path):
+        os.makedirs(dest_path)
+
+    # 获取源路径下的所有子文件夹
+    subfolders = [f.path for f in os.scandir(source_path) if f.is_dir()]
+
+    # 遍历所有子文件夹
+    for subfolder in tqdm(subfolders, desc="Processing folders"):
+        # 统计当前文件夹中的文件数量
+        file_count = sum(1 for entry in os.scandir(subfolder) if entry.is_file())
+
+        # 如果文件数量超过阈值，则拷贝该文件夹
+        if file_count > file_count_threshold:
+            dest_subfolder = os.path.join(dest_path, os.path.basename(subfolder))
+            shutil.copytree(subfolder, dest_subfolder)
+
+source_path = "genshin_frame_V2"
+dest_path = "genshin_frame_V2_tgt"
+file_count_threshold = 30
+copy_folders_with_many_files(source_path, dest_path, file_count_threshold)
 ```
 
 ## References
