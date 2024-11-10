@@ -45,7 +45,7 @@ Download a sample video from a source like Bilibili using a tool like `BBDown`:
 
 ```bash
 .\BBDown.exe https://www.bilibili.com/video/BV14UD6YFEh1
-mv '.\【原神·尘歌壶】翠黛峰一体化_扫冬峰 峰上人间 _ 摹本分享.mp4' cgh_hb.mp4
+mv '.\【原神·尘歌壶】翠黛峰一体化_扫冬峰 峰上人间 _ 摹本分享.mp4' BV14UD6YFEh1.mp4
 ```
 
 ### 2. Extract Keyframes and Segment the Video
@@ -53,29 +53,76 @@ mv '.\【原神·尘歌壶】翠黛峰一体化_扫冬峰 峰上人间 _ 摹本�
 Use the provided Python script to extract keyframes and segment the video based on similarity:
 
 ```python
-from Katna.video import Video
-from Katna.writer import KeyFrameDiskWriter
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 import os
+import re
+import shutil
+from tqdm import tqdm
 import cv2
 import numpy as np
-from moviepy.editor import VideoFileClip
 import hashlib
-import shutil
+from Katna.video import Video
+from Katna.writer import KeyFrameDiskWriter
+
+def ensure_folder_exists(folder_path):
+    """
+    确保文件夹存在，如果存在则删除并重新创建。
+
+    :param folder_path: 文件夹路径
+    """
+    if os.path.exists(folder_path):
+        shutil.rmtree(folder_path)
+    os.makedirs(folder_path, exist_ok=True)
+
+def extract_all_frames(video_file_path, output_folder):
+    """
+    从视频文件中提取所有帧，并将它们保存到指定路径，按照帧的时间戳进行命名。
+
+    :param video_file_path: 视频文件的路径
+    :param output_folder: 保存帧的输出文件夹路径
+    """
+    ensure_folder_exists(output_folder)
+
+    # 打开视频文件
+    cap = cv2.VideoCapture(video_file_path)
+    if not cap.isOpened():
+        raise ValueError("无法打开视频文件")
+
+    frame_count = 0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    for _ in tqdm(range(total_frames), desc="提取所有帧"):
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # 按照帧的时间戳命名文件
+        frame_name = f"{frame_count:06d}.jpg"
+        frame_path = os.path.join(output_folder, frame_name)
+        cv2.imwrite(frame_path, frame)
+
+        frame_count += 1
+
+    cap.release()
 
 def extract_video_keyframes(video_file_path, no_of_frames=12):
     """
-    Extract keyframes from a video file and save them to a temporary folder.
+    从视频文件中提取关键帧，并将它们保存到临时文件夹中。
 
-    :param video_file_path: Path to the video file
-    :param no_of_frames: Number of keyframes to extract, default is 12
-    :return: Path to the temporary folder containing keyframes
+    :param video_file_path: 视频文件的路径
+    :param no_of_frames: 要提取的关键帧数量，默认为 12
+    :return: 保存关键帧的临时文件夹路径
     """
+    # 创建临时文件夹
     temp_folder = f"temp_keyframes_{hashlib.md5(video_file_path.encode()).hexdigest()}"
-    os.makedirs(temp_folder, exist_ok=True)
+    ensure_folder_exists(temp_folder)
 
+    # 初始化视频模块
     vd = Video()
+
+    # 初始化磁盘写入器以保存数据到指定位置
     diskwriter = KeyFrameDiskWriter(location=temp_folder)
 
+    # 提取关键帧
     vd.extract_video_keyframes(
         no_of_frames=no_of_frames,
         file_path=video_file_path,
@@ -86,83 +133,185 @@ def extract_video_keyframes(video_file_path, no_of_frames=12):
 
 def calculate_similarity(image1, image2):
     """
-    Calculate the similarity between two images.
+    计算两张图像的相似度。
 
-    :param image1: First image
-    :param image2: Second image
-    :return: Similarity value
+    :param image1: 第一张图像
+    :param image2: 第二张图像
+    :return: 相似度值
     """
-    gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+    # 计算像素点的绝对差的平均值
+    similarity = np.mean(np.abs(image1.astype(float) - image2.astype(float)))
+    return -1 * similarity
 
-    hist1 = cv2.calcHist([gray1], [0], None, [256], [0, 256])
-    hist2 = cv2.calcHist([gray2], [0], None, [256], [0, 256])
-
-    cv2.normalize(hist1, hist1, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-    cv2.normalize(hist2, hist2, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-
-    similarity = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
-    return similarity
-
-def split_video_by_similarity(video_file_path, similarity_threshold=0.8, no_of_frames=12):
+def find_most_similar_frame(keyframe_path, all_frames_folder, step=10):
     """
-    Split the video into smaller clips based on image similarity and save them to a specified path.
+    找到与给定关键帧最相似的帧。
 
-    :param video_file_path: Path to the original video file
-    :param similarity_threshold: Similarity threshold, default is 0.8
-    :param no_of_frames: Number of keyframes to extract, default is 12
+    :param keyframe_path: 关键帧的路径
+    :param all_frames_folder: 所有帧的文件夹路径
+    :param step: 每隔多少帧比较一次，默认为 10
+    :return: 最相似帧的文件名
     """
-    video_name = os.path.basename(video_file_path).split('.')[0]
-    output_folder = f"{video_name}_segments"
+    # 读取关键帧
+    keyframe = cv2.imread(keyframe_path)
+    if keyframe is None:
+        raise ValueError("无法读取关键帧")
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    # 初始化最大相似度和对应的文件名
+    max_similarity = -10000000000
+    most_similar_frame_name = None
 
-    keyframe_folder = extract_video_keyframes(video_file_path, no_of_frames)
+    # 遍历所有帧，每隔 step 帧比较一次
+    frame_names = sorted(os.listdir(all_frames_folder))
+    for frame_name in tqdm(frame_names[::step], desc="寻找最相似帧"):
+        frame_path = os.path.join(all_frames_folder, frame_name)
+        frame = cv2.imread(frame_path)
+        if frame is None:
+            continue
 
-    keyframe_files = [f for f in os.listdir(keyframe_folder) if f.endswith('.jpeg')]
-    keyframe_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
+        # 计算相似度
+        similarity = calculate_similarity(keyframe, frame)
 
-    keyframes = []
-    for keyframe_file in keyframe_files:
-        keyframe_path = os.path.join(keyframe_folder, keyframe_file)
-        keyframe = cv2.imread(keyframe_path)
-        keyframes.append(keyframe)
+        # 更新最大相似度和对应的文件名
+        if similarity > max_similarity:
+            max_similarity = similarity
+            most_similar_frame_name = frame_name
 
+    return most_similar_frame_name
+
+def longest_increasing_subsequence(arr):
+    """
+    动态规划求解最长递增子序列
+    """
+    if not arr:
+        return []
+
+    n = len(arr)
+    dp = [1] * n
+    for i in tqdm(range(1, n), desc="计算最长递增子序列"):
+        for j in range(i):
+            if arr[i] > arr[j]:
+                dp[i] = max(dp[i], dp[j] + 1)
+
+    max_len = max(dp)
+    result = []
+    for i in tqdm(range(n - 1, -1, -1), desc="构建最长递增子序列"):
+        if dp[i] == max_len:
+            result.append(arr[i])
+            max_len -= 1
+
+    result.reverse()
+    return result
+
+def find_longest_increasing_subsequence(file_list):
+    """
+    找到最长递增子序列
+    """
+    # 提取数值后缀
+    suffixes = [(extract_numeric_suffix(file[0]), extract_numeric_suffix(file[1]), file) for file in file_list]
+
+    # 按照第一个数值后缀排序
+    suffixes.sort(key=lambda x: x[0])
+
+    # 提取第二个数值后缀
+    second_suffixes = [suffix[1] for suffix in suffixes]
+
+    # 找到最长递增子序列
+    longest_subseq = longest_increasing_subsequence(second_suffixes)
+
+    # 找到对应的文件名
+    result = []
+    for suffix in tqdm(suffixes, desc="构建最长递增子序列结果"):
+        if suffix[1] in longest_subseq:
+            result.append(suffix[2])
+            longest_subseq.remove(suffix[1])
+
+    return result
+
+def create_interval_videos(video_file_path, result, output_folder):
+    """
+    根据 find_longest_increasing_subsequence 返回的列表，将视频分割成若干个间隔视频，并输出到指定文件夹。
+
+    :param video_file_path: 视频文件的路径
+    :param result: find_longest_increasing_subsequence 返回的列表
+    :param output_folder: 输出间隔视频的文件夹路径
+    """
+    ensure_folder_exists(output_folder)
+
+    # 提取数值后缀
+    suffixes = [(extract_numeric_suffix(file[0]), extract_numeric_suffix(file[1])) for file in result]
+
+    # 按照第一个数值后缀排序
+    suffixes.sort(key=lambda x: x[0])
+
+    # 打开视频文件
     video_clip = VideoFileClip(video_file_path)
-    fps = video_clip.fps
 
-    segments = []
-    start_time = 0
-    current_time = 0
-    current_frame = 0
+    # 遍历分割点，创建间隔视频
+    for i in tqdm(range(len(suffixes) - 1), desc="创建间隔视频"):
+        start_frame = suffixes[i][1]
+        end_frame = suffixes[i + 1][1]
 
-    for frame in video_clip.iter_frames():
-        similarity = calculate_similarity(frame, keyframes[current_frame])
+        # 计算开始和结束时间
+        start_time = start_frame / video_clip.fps
+        end_time = end_frame / video_clip.fps
 
-        if similarity > similarity_threshold:
-            end_time = current_time
-            segments.append((start_time, end_time))
-            start_time = current_time
-            current_frame += 1
-            if current_frame >= len(keyframes):
-                break
-
-        current_time += 1 / fps
-
-    segments.append((start_time, current_time))
-    segments = list(filter(lambda x: x[1] - x[0] > 0, segments))
-
-    for i, (start_time, end_time) in enumerate(segments):
+        # 提取子视频
         subclip = video_clip.subclip(start_time, end_time)
-        output_file = os.path.join(output_folder, f'{video_name}_segment_{i}.mp4')
-        subclip.write_videofile(output_file, codec='libx264')
 
-    shutil.rmtree(keyframe_folder)
+        # 保存子视频
+        output_path = os.path.join(output_folder, f"interval_{i}.mp4")
+        subclip.write_videofile(output_path, codec='libx264')
 
-# Example call
-video_file_path = "cgh_hb.mp4"
-split_video_by_similarity(video_file_path, no_of_frames=24)
+    # 关闭视频文件
+    video_clip.close()
+
+def extract_numeric_suffix(filename):
+    """
+    使用正则表达式提取数值后缀
+    """
+    match = re.search(r'(\d+)\.\w+$', filename)
+    if match:
+        return int(match.group(1))
+    return None
+
+def process_video(video_file_path, no_of_frames=12, step=10, output_folder="interval_videos"):
+    """
+    处理视频文件，提取所有帧和关键帧，并找到与每个关键帧最相似的帧。然后根据最长递增子序列创建间隔视频。
+
+    :param video_file_path: 视频文件的路径
+    :param no_of_frames: 要提取的关键帧数量，默认为 12
+    :param step: 每隔多少帧比较一次，默认为 10
+    :param output_folder: 输出间隔视频的文件夹路径
+    :return: 包含关键帧路径和最相似帧名称的列表
+    """
+
+    # 提取所有帧并保存
+    all_frames_folder = "all_frames"
+    ensure_folder_exists(all_frames_folder)
+    extract_all_frames(video_file_path, all_frames_folder)
+
+    # 提取关键帧
+    temp_folder = extract_video_keyframes(video_file_path, no_of_frames)
+
+    # 找到与每个关键帧最相似的帧
+    result = []
+    for keyframe_name in tqdm(os.listdir(temp_folder), desc="寻找最相似帧"):
+        keyframe_path = os.path.join(temp_folder, keyframe_name)
+        most_similar_frame_name = find_most_similar_frame(keyframe_path, all_frames_folder, step)
+        result.append([keyframe_path, most_similar_frame_name])
+
+    # 找到最长递增子序列
+    longest_subseq_result = find_longest_increasing_subsequence(result)
+
+    # 创建间隔视频
+    ensure_folder_exists(output_folder)
+    create_interval_videos(video_file_path, longest_subseq_result, output_folder)
+
+    return longest_subseq_result
+
+# 处理视频并创建间隔视频
+result = process_video("BV14UD6YFEh1.mp4", no_of_frames=24, output_folder="BV14UD6YFEh1_interval_videos")
 ```
 
 ### 3. Run the Script
