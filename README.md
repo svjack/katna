@@ -322,7 +322,53 @@ Save the script to a file, for example, `video_segmentation.py`, and run it:
 python video_segmentation.py
 ```
 
-This will segment the video `cgh_hb.mp4` into smaller clips based on the similarity of keyframes and save them in the `cgh_hb_segments` folder.
+### 4. download some videos to local 
+```python
+import os
+import re
+import shutil
+from moviepy.editor import VideoFileClip
+
+# 视频链接的文本
+video_links_text = '''
+【【原神·尘歌壶】翠黛峰一体化|扫冬峰 峰上人间 | 摹本分享】https://www.bilibili.com/video/BV14UD6YFEh1?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【【尘歌壶｜定制】翠黛峰一体化|抱秋峰 四方戏台 双区设计】https://www.bilibili.com/video/BV12YDaYME9Z?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【【尘歌壶｜定制】翠黛峰一体化|茶舍 捉夏峰 双区设计】https://www.bilibili.com/video/BV1UfDZYjE6R?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【【尘歌壶｜定制】翠黛峰一体化|数春峰 演武场 闲云vs钟离？】https://www.bilibili.com/video/BV1ibDQYkER5?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【『旦逢良辰，顺颂时宜——朱颜长似，岁岁年年｜献予生辰礼』】https://www.bilibili.com/video/BV1Ao18YjE2C?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【【尘歌壶｜定制】废土温室 枫丹壶三区露雾礁｜官服b服摹本分享】https://www.bilibili.com/video/BV1qrmNYTELp?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【【尘歌壶｜定制】集樱阁 稻妻壶一区霞见滩】https://www.bilibili.com/video/BV1HTmPYrE6r?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【【原神·尘歌壶】金色山脉下的童话小镇 罗浮洞四区燎雾岛带主宅】https://www.bilibili.com/video/BV1ur2oYNEXE?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【『One last kiss｜一分二十秒，献给自己的生日贺礼！』】https://www.bilibili.com/video/BV1FC1kYCErf?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+【【原神·尘歌壶】风车，落日，向日葵 | 娜维娅生贺壶】https://www.bilibili.com/video/BV1cKe4eWErc?vd_source=40cbe1b4dd51a83f3a39affb08e11e45
+'''
+
+video_links = re.findall(r'https://www\.bilibili\.com/video/BV\w+', video_links_text)
+
+# 打印视频链接列表
+print(video_links)
+
+# 下载视频并重命名
+for link in video_links:
+    # 使用 BBDown.exe 下载视频
+    os.system(f'BBDown.exe {link}')
+
+    # 提取 BV 号
+    bv_code = re.search(r'BV\w+', link).group(0)
+
+    # 获取当前目录下的所有 .mp4 文件
+    mp4_files = [f for f in os.listdir('.') if f.endswith('.mp4')]
+
+    # 根据创建时间排序，选择最新的 .mp4 文件
+    latest_file = max(mp4_files, key=lambda f: os.path.getctime(f))
+
+    # 重命名文件
+    new_filename = f'{bv_code}.mp4'
+    clip = VideoFileClip(latest_file)
+    clip.write_videofile(new_filename)
+    print(f'Renamed {latest_file} to {new_filename}')
+
+```
 
 ## References
 
