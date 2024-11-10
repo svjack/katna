@@ -370,6 +370,24 @@ for link in video_links:
 
 ```
 
+### 5. mp4 downloaded split in iter 
+```python
+import pathlib
+import pandas as pd
+import numpy as np
+mp4_l = pd.Series(list(pathlib.Path(".").rglob("BV*.mp4"))).map(str).map(
+    lambda x: np.nan if "\\" in x else x
+).dropna().values.tolist()
+mp4_l
+
+from tqdm import tqdm
+from IPython import display
+for mp4_path in tqdm(mp4_l):
+    name = mp4_path.split(".")[0]
+    result = process_video(mp4_path, no_of_frames=24, output_folder="{}_interval_videos".format(name))
+    display.clear_output(wait = True)
+```
+
 ## References
 
 - [Katna GitHub Repository](https://github.com/keplerlab/Katna)
