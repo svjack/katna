@@ -7,6 +7,7 @@
 * Homepage and Reference: <https://katna.readthedocs.io/>
 
 # Video Segmentation by Keyframe Similarity
+# More professional: https://github.com/aigc-apps/CogVideoX-Fun/blob/main/cogvideox/video_caption/README.md (search "slow")
 
 This README provides a guide on how to segment a video into smaller clips based on the similarity of keyframes extracted from the video. The process involves extracting keyframes, calculating similarity between frames, and splitting the video accordingly.
 
